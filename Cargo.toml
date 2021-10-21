@@ -22,3 +22,14 @@ data-encoding = "2.3"
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+[features]
+default = []
+
+dist = []
+
+[profile.release]
+incremental = true
+debug = 0 # Set this to 1 or 2 to get more useful backtraces in debugger.
+lto = true
+codegen-units = 1

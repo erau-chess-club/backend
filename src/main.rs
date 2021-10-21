@@ -11,8 +11,11 @@ use rocket::{
 extern crate diesel;
 
 mod auth;
+mod games;
 mod model;
 mod schema;
+
+pub use auth::UserSession;
 
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
@@ -45,15 +48,15 @@ fn rocket() -> _ {
 
     let db = Db::new(database_url);
 
-    #[cfg(debug_assertions)]
-    const STATIC_PATH: &str = "../frontend/";
-    #[cfg(not(debug_assertions))]
+    #[cfg(feature = "dist")]
     const STATIC_PATH: &str = "/etc/erauchess.org/public";
+    #[cfg(not(feature = "dist"))]
+    const STATIC_PATH: &str = "../frontend/";
 
     rocket::build()
         .manage(db)
         .mount("/", FileServer::from(STATIC_PATH))
-        .mount("/api/v1", routes![auth::login, auth::register])
+        .mount("/api/v1", routes![auth::login, auth::register, games::add])
 }
 
 ///Possible errors from web & comms API
@@ -115,7 +118,7 @@ where
                     }
                     Ok(json) => {
                         //Assume object. Remove last curly brace
-                        if !json.ends_with('}') {
+                        if json.ends_with('}') {
                             error!(
                                 "Json object doesn't end with a }} character! Json: {}",
                                 json

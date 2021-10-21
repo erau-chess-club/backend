@@ -1,5 +1,6 @@
 use crate::model::{NewUser, User};
 use crate::{schema::users, ApiError, ApiResponse, Db};
+
 use chrono::{NaiveDateTime, Utc};
 use data_encoding::BASE64;
 use diesel::prelude::*;
@@ -28,7 +29,7 @@ pub async fn register(
     state: &State<Db>,
     params: Form<RegisterRequest>,
     cookies: &CookieJar<'_>,
-) -> ApiResponse<UserSesh> {
+) -> ApiResponse<UserSession> {
     let conn = state.connect();
 
     let b64 = compute_password_hash(&params.password, &params.email);
@@ -50,9 +51,9 @@ pub async fn register(
     {
         Ok(new_id) => {
             info!("inserted user: {}", new_id);
-            let sesh = UserSesh::new(0, false);
-            cookies.add_private(sesh.as_cookie());
-            ApiResponse(Ok(sesh))
+            let session = UserSession::new(0, false);
+            cookies.add_private(session.as_cookie());
+            ApiResponse(Ok(session))
         }
         Err(DieselError::DatabaseError(
             diesel::result::DatabaseErrorKind::UniqueViolation,
@@ -74,17 +75,61 @@ pub struct LoginParams {
     hash: String,
 }
 
+#[post("/login", data = "<params>")]
+pub async fn login(
+    state: &State<Db>,
+    params: Form<LoginParams>,
+    cookies: &CookieJar<'_>,
+) -> ApiResponse<UserSession> {
+    let conn = state.connect();
+
+    use crate::schema::users::dsl::*;
+
+    trace!("filtering by email {}", &params.email);
+    let query = users
+        .filter(email.eq(params.email.clone()))
+        .first::<User>(&conn);
+
+    // Decide whether to query by email or by username
+    match query {
+        Ok(user) => {
+            let b64 = compute_password_hash(&params.hash, &params.email);
+            if b64 == user.hash {
+                let session = UserSession::new(user.id, user.is_officer);
+                cookies.add_private(session.as_cookie());
+                ApiResponse(Ok(session))
+            } else {
+                ApiResponse(Err(ApiError::IncorrectCredentials))
+            }
+        }
+        Err(DieselError::NotFound) => ApiResponse(Err(ApiError::UserNotFound)),
+        Err(e) => {
+            error!("Database error: {}", e);
+            ApiResponse(Err(ApiError::Unknown("unknown database error".to_string())))
+        }
+    }
+}
+
+pub fn is_session_valid(session: &UserSession) -> bool {
+    let cur_time: u64 = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    cur_time < session.start + session.length
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct UserSesh {
+pub struct UserSession {
     pub user: i32,
     pub length: u64,
     pub is_officer: bool,
     pub start: u64,
 }
 
-impl UserSesh {
+impl UserSession {
     fn new(user: i32, is_officer: bool) -> Self {
-        UserSesh {
+        UserSession {
             start: std::time::SystemTime::now()
                 .duration_since(std::time::SystemTime::UNIX_EPOCH)
                 .unwrap()
@@ -97,7 +142,7 @@ impl UserSesh {
 
     fn as_cookie(&self) -> Cookie<'static> {
         let mut cookie = Cookie::new(
-            "UserSesh",
+            "Session",
             serde_json::to_string(self)
                 .expect("must be able to serialize a session cookie we generate"),
         );
@@ -112,11 +157,11 @@ impl UserSesh {
 }
 
 #[rocket::async_trait]
-impl<'r> FromRequest<'r> for UserSesh {
+impl<'r> FromRequest<'r> for UserSession {
     type Error = ApiError;
     async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        match request.cookies().get_private("UserSesh") {
-            Some(sesh) => match serde_json::from_str::<UserSesh>(sesh.value()) {
+        match request.cookies().get_private("Session") {
+            Some(session) => match serde_json::from_str::<UserSession>(session.value()) {
                 Ok(obj) => match is_session_valid(&obj) {
                     false => {
                         trace!("not logged in! - session before entry in logouts db");
@@ -142,48 +187,4 @@ fn compute_password_hash(password: &str, salt: &str) -> String {
         (std::time::Instant::now() - start).as_micros() as f64 / 1000.0
     );
     BASE64.encode(&buff)
-}
-
-#[post("/login", data = "<params>")]
-pub async fn login(
-    state: &State<Db>,
-    params: Form<LoginParams>,
-    cookies: &CookieJar<'_>,
-) -> ApiResponse<UserSesh> {
-    let conn = state.connect();
-
-    use crate::schema::users::dsl::*;
-
-    trace!("filtering by email {}", &params.email);
-    let query = users
-        .filter(email.eq(params.email.clone()))
-        .first::<User>(&conn);
-
-    // Decide whether to query by email or by username
-    match query {
-        Ok(user) => {
-            let b64 = compute_password_hash(&params.hash, &params.email);
-            if b64 == user.hash {
-                let session = UserSesh::new(user.id, user.is_officer);
-                cookies.add_private(session.as_cookie());
-                ApiResponse(Ok(session))
-            } else {
-                ApiResponse(Err(ApiError::IncorrectCredentials))
-            }
-        }
-        Err(DieselError::NotFound) => ApiResponse(Err(ApiError::UserNotFound)),
-        Err(e) => {
-            error!("Database error: {}", e);
-            ApiResponse(Err(ApiError::Unknown("unknown database error".to_string())))
-        }
-    }
-}
-
-pub fn is_session_valid(sesh: &UserSesh) -> bool {
-    let cur_time: u64 = std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    cur_time < sesh.start + sesh.length
 }

@@ -3,6 +3,12 @@ table! {
         id -> Integer,
         white_id -> Integer,
         black_id -> Integer,
+        white_points -> Float,
+        black_points -> Float,
+        pgn -> Nullable<Text>,
+        scorecard_image -> Nullable<Binary>,
+        game_end -> Timestamp,
+        game_entered -> Timestamp,
     }
 }
 
@@ -20,4 +26,7 @@ table! {
     }
 }
 
-allow_tables_to_appear_in_same_query!(games, users,);
+allow_tables_to_appear_in_same_query!(
+    games,
+    users,
+);
