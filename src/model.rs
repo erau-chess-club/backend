@@ -1,4 +1,4 @@
-use crate::schema::{users, games};
+use crate::schema::{games, users};
 
 use chrono::NaiveDateTime;
 
@@ -46,4 +46,3 @@ pub struct Game {
     pub game_end: NaiveDateTime,
     pub game_entered: NaiveDateTime,
 }
-

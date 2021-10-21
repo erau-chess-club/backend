@@ -1,4 +1,4 @@
-use chrono::{Utc, NaiveDateTime};
+use chrono::{NaiveDateTime, Utc};
 use diesel::prelude::*;
 
 use rocket::{
