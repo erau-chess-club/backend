@@ -1,12 +1,10 @@
 use crate::model::{NewUser, User};
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{NaiveDateTime, Utc};
 use data_encoding::BASE64;
 use diesel::prelude::*;
 use diesel::result::Error as DieselError;
 use log::info;
 use serde::{Deserialize, Serialize};
-//use rand::rngs::OsRng;
-//use rand::RngCore;
 use crate::{schema::users, ApiError, ApiResponse, Db};
 use rocket::{
     form::{Form, FromForm},
@@ -22,7 +20,7 @@ pub struct RegisterRequest {
     pub erau_id: Option<i32>,
     pub chess_com_username: String,
     pub email: String,
-    pub hash: String,
+    pub password: String,
 }
 
 #[post("/register", data = "<params>")]
@@ -33,15 +31,16 @@ pub async fn register(
 ) -> ApiResponse<UserSesh> {
     let conn = state.connect();
 
-    let b64 = compute_password_hash(&params.hash, &params.email);
+    let b64 = compute_password_hash(&params.password, &params.email);
 
     let now = NaiveDateTime::from_timestamp(Utc::now().timestamp(), 0);
     let new_user = NewUser {
         first_name: params.first_name.as_str(),
         last_name: params.last_name.as_str(),
+        hash: b64,
         erau_id: params.erau_id,
-        chess_com_username: params.chess_com_username,
-        email: params.email,
+        chess_com_username: params.chess_com_username.clone(),
+        email: params.email.clone(),
         signup_date: now,
     };
 
@@ -51,7 +50,7 @@ pub async fn register(
     {
         Ok(new_id) => {
             info!("inserted user: {}", new_id);
-            let sesh = UserSesh::new(new_id, false);
+            let sesh = UserSesh::new(0, false);
             cookies.add_private(sesh.as_cookie());
             ApiResponse(Ok(sesh))
         }
@@ -132,12 +131,12 @@ impl<'r> FromRequest<'r> for UserSesh {
     }
 }
 
-fn compute_password_hash(password: &String, salt: &String) -> String {
+fn compute_password_hash(password: &str, salt: &str) -> String {
     let digest = crypto::sha2::Sha512::new();
-    let mut mac = crypto::hmac::Hmac::new(digest, &password.as_bytes());
+    let mut mac = crypto::hmac::Hmac::new(digest, password.as_bytes());
     let mut buff = [0u8; 64];
     let start = std::time::Instant::now();
-    crypto::pbkdf2::pbkdf2(&mut mac, &salt.as_bytes(), 2000, &mut buff);
+    crypto::pbkdf2::pbkdf2(&mut mac, salt.as_bytes(), 750, &mut buff);
     info!(
         "pbkdf took {} ms",
         (std::time::Instant::now() - start).as_micros() as f64 / 1000.0
@@ -155,8 +154,8 @@ pub async fn login(
 
     use crate::schema::users::dsl::*;
 
-    trace!("filtering by email {}", params.email);
-    let query = users.filter(email.eq(params.email)).first::<User>(&conn);
+    trace!("filtering by email {}", &params.email);
+    let query = users.filter(email.eq(params.email.clone())).first::<User>(&conn);
 
     // Decide whether to query by email or by username
     match query {

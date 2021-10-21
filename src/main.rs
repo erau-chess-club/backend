@@ -95,7 +95,6 @@ impl From<ApiError> for String {
             ApiError::InvalidInput(msg) => format!("invalid input: {}", msg),
             ApiError::EmailTaken => "email taken".to_owned(),
         }
-        .to_owned()
     }
 }
 
@@ -116,7 +115,7 @@ where
                     }
                     Ok(json) => {
                         //Assume object. Remove last curly brace
-                        if json.chars().last().unwrap() != '}' {
+                        if !json.ends_with('}') {
                             error!(
                                 "Json object doesn't end with a }} character! Json: {}",
                                 json
@@ -157,7 +156,7 @@ where
         };
 
         Response::build()
-            .sized_body(body.len(), std::io::Cursor::new(body.clone()))
+            .sized_body(body.len(), std::io::Cursor::new(body))
             .status(status)
             .header(ContentType::JSON)
             .ok()

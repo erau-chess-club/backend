@@ -11,7 +11,7 @@ tokio = { version = "1.12", features = ["rt", "macros", "rt-multi-thread"] }
 log = "0.4"
 env_logger = "0.9.0"
 chrono = "0.4"
-time = "0.3"
+time = "0.2.11"
 rand = { version = "0.8", features = ["getrandom"] }
 
 chacha20poly1305 = "0.8" # audited by some sort of firm

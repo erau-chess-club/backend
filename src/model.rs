@@ -10,7 +10,7 @@ pub struct User {
     pub last_name: String,
     pub hash: String,
 
-    pub erau_id: i32,
+    pub erau_id: Option<i32>,
     pub signup_date: NaiveDateTime,
     pub is_officer: bool,
     pub chess_com_username: String,
@@ -22,6 +22,7 @@ pub struct User {
 pub struct NewUser<'a, 'b> {
     pub first_name: &'a str,
     pub last_name: &'b str,
+    pub hash: String,
     pub erau_id: Option<i32>,
     pub chess_com_username: String,
     pub email: String,
