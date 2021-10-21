@@ -5,15 +5,12 @@ on: [push, pull_request]
 jobs:
   test:
     name: Test
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        rust: [stable, beta, nightly]
+    runs-on: ubuntu-latest 
     steps:
     - uses: actions/checkout@master
     - name: Build & Test
       run: |
-        rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
+        rustup update nightly && rustup default nightly
         cargo test 
 
   rustfmt:
@@ -23,7 +20,7 @@ jobs:
     - uses: actions/checkout@master
     - name: Rustfmt Check
       run: |
-        rustup update stable && rustup default stable && rustup component add rustfmt
+        rustup update nightly && rustup default nightly && rustup component add rustfmt
         cargo fmt -- --check
 
   clippy_check:
