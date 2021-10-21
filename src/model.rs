@@ -18,7 +18,7 @@ pub struct User {
 }
 
 #[derive(Insertable)]
-#[table_name="users"]
+#[table_name = "users"]
 pub struct NewUser<'a, 'b> {
     pub first_name: &'a str,
     pub last_name: &'b str,

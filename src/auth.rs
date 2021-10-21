@@ -1,17 +1,17 @@
 use crate::model::{NewUser, User};
+use crate::{schema::users, ApiError, ApiResponse, Db};
 use chrono::{NaiveDateTime, Utc};
 use data_encoding::BASE64;
 use diesel::prelude::*;
 use diesel::result::Error as DieselError;
 use log::info;
-use serde::{Deserialize, Serialize};
-use crate::{schema::users, ApiError, ApiResponse, Db};
 use rocket::{
     form::{Form, FromForm},
     http::{Cookie, CookieJar, Status},
     request::{FromRequest, Outcome, Request},
     State,
 };
+use serde::{Deserialize, Serialize};
 
 #[derive(FromForm)]
 pub struct RegisterRequest {
@@ -155,7 +155,9 @@ pub async fn login(
     use crate::schema::users::dsl::*;
 
     trace!("filtering by email {}", &params.email);
-    let query = users.filter(email.eq(params.email.clone())).first::<User>(&conn);
+    let query = users
+        .filter(email.eq(params.email.clone()))
+        .first::<User>(&conn);
 
     // Decide whether to query by email or by username
     match query {
