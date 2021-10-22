@@ -72,7 +72,7 @@ pub async fn register(
 #[derive(FromForm)]
 pub struct LoginParams {
     email: String,
-    hash: String,
+    password: String,
 }
 
 #[post("/login", data = "<params>")]
@@ -85,20 +85,19 @@ pub async fn login(
 
     use crate::schema::users::dsl::*;
 
-    trace!("filtering by email {}", &params.email);
     let query = users
         .filter(email.eq(params.email.clone()))
         .first::<User>(&conn);
 
-    // Decide whether to query by email or by username
     match query {
         Ok(user) => {
-            let b64 = compute_password_hash(&params.hash, &params.email);
+            let b64 = compute_password_hash(&params.password, &params.email);
             if b64 == user.hash {
                 let session = UserSession::new(user.id, user.is_officer);
                 cookies.add_private(session.as_cookie());
                 ApiResponse(Ok(session))
             } else {
+                info!("Invalid login for email: {}", params.email);
                 ApiResponse(Err(ApiError::IncorrectCredentials))
             }
         }
@@ -167,11 +166,43 @@ impl<'r> FromRequest<'r> for UserSession {
                         trace!("not logged in! - session before entry in logouts db");
                         Outcome::Failure((Status::Forbidden, ApiError::NotLoggedIn))
                     }
-                    true => Outcome::Success(obj.clone()),
+                    true => {
+                        info!("Got good session: {}", session.value());
+                        Outcome::Success(obj.clone())
+                    }
                 },
-                Err(_) => Outcome::Failure((Status::BadRequest, ApiError::NotLoggedIn)),
+                Err(_) => {
+                    info!("Session is not valid");
+                    Outcome::Failure((Status::BadRequest, ApiError::NotLoggedIn))
+                }
             },
-            None => Outcome::Failure((Status::BadRequest, ApiError::NotLoggedIn)),
+            None => {
+                info!("Missing Session cookie");
+                Outcome::Failure((Status::BadRequest, ApiError::NotLoggedIn))
+            }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct OfficerUserSession(pub UserSession);
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for OfficerUserSession {
+    type Error = ApiError;
+    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        let session: Outcome<UserSession, ApiError> = UserSession::from_request(request).await;
+        match session {
+            Outcome::Success(session) => {
+                if session.is_officer {
+                    Outcome::Success(OfficerUserSession(session))
+                } else {
+                    info!("User {} is not an officer", session.user);
+                    Outcome::Failure((Status::Unauthorized, ApiError::OfficerRequired))
+                }
+            }
+            Outcome::Failure(t) => Outcome::Failure(t),
+            Outcome::Forward(()) => Outcome::Forward(()),
         }
     }
 }

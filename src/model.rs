@@ -2,8 +2,7 @@ use crate::schema::{games, users};
 
 use chrono::NaiveDateTime;
 
-#[derive(Queryable, Identifiable, Associations)]
-//#[belongs_to(NewGame, foreign_key = "white_id")]
+#[derive(Queryable, Identifiable, Associations, Debug)]
 #[table_name = "users"]
 pub struct User {
     #[primary_key]
@@ -32,9 +31,9 @@ pub struct NewUser<'a, 'b> {
     pub signup_date: NaiveDateTime,
 }
 
-#[derive(Queryable, Insertable)]
-#[table_name = "games"]
+#[derive(Queryable, Debug)]
 pub struct Game {
+    pub id: i32,
     pub white_id: i32,
     pub black_id: i32,
 
@@ -44,5 +43,21 @@ pub struct Game {
     pub scorecard_image: Option<Vec<u8>>,
 
     pub game_end: NaiveDateTime,
-    pub game_entered: NaiveDateTime,
+    pub added_on: NaiveDateTime,
+    pub added_by: i32,
+}
+
+#[derive(Insertable, Debug)]
+#[table_name = "games"]
+pub struct NewGame {
+    pub white_id: i32,
+    pub black_id: i32,
+
+    pub white_points: f32,
+    pub black_points: f32,
+    pub pgn: Option<String>,
+    pub scorecard_image: Option<Vec<u8>>,
+
+    pub game_end: NaiveDateTime,
+    pub added_by: i32,
 }

@@ -14,7 +14,6 @@ chrono = "0.4"
 time = "0.2.11"
 rand = { version = "0.8", features = ["getrandom"] }
 
-chacha20poly1305 = "0.8" # audited by some sort of firm
 rust-crypto = "^0.2" 
 
 dotenv = "0.15"
@@ -28,8 +27,8 @@ default = []
 
 dist = []
 
-[profile.release]
-incremental = true
-debug = 0 # Set this to 1 or 2 to get more useful backtraces in debugger.
-lto = true
-codegen-units = 1
+#[profile.release]
+#incremental = true
+##debug = 0 # Set this to 1 or 2 to get more useful backtraces in debugger.
+#lto = true
+##codegen-units = 1

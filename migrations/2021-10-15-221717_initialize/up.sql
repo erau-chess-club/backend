@@ -23,8 +23,10 @@ CREATE TABLE games (
     scorecard_image BLOB,--Base64 jpeg image of game
 
     game_end TIMESTAMP NOT NULL,
-    game_entered TIMESTAMP NOT NULL,
+    added_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    added_by INTEGER NOT NULL,
 
     FOREIGN KEY (white_id) REFERENCES users(id),
-    FOREIGN KEY (black_id) REFERENCES users(id)
+    FOREIGN KEY (black_id) REFERENCES users(id),
+    FOREIGN KEY (added_by) REFERENCES users(id)
 );

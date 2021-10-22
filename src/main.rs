@@ -14,6 +14,7 @@ mod auth;
 mod games;
 mod model;
 mod schema;
+mod users;
 
 pub use auth::UserSession;
 
@@ -56,13 +57,23 @@ fn rocket() -> _ {
     rocket::build()
         .manage(db)
         .mount("/", FileServer::from(STATIC_PATH))
-        .mount("/api/v1", routes![auth::login, auth::register, games::add])
+        .mount(
+            "/api/v1",
+            routes![
+                auth::login,
+                auth::register,
+                games::add,
+                games::list,
+                users::list
+            ],
+        )
 }
 
 ///Possible errors from web & comms API
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum ApiError {
     Unknown(String),
+    DatabaseError(String),
     UserNotFound,
 
     NotLoggedIn,
@@ -73,17 +84,22 @@ pub enum ApiError {
 
     /// The email the user wanted is already taken
     EmailTaken,
+
+    /// Only officers can perform the action
+    OfficerRequired,
 }
 
 impl From<ApiError> for Status {
     fn from(err: ApiError) -> Self {
         match err {
             ApiError::Unknown(_) => Status::InternalServerError,
+            ApiError::DatabaseError(_err) => Status::InternalServerError,
             ApiError::UserNotFound => Status::NotFound,
             ApiError::NotLoggedIn => Status::Forbidden,
             ApiError::IncorrectCredentials => Status::Unauthorized,
             ApiError::InvalidInput(_msg) => Status::BadRequest,
             ApiError::EmailTaken => Status::BadRequest,
+            ApiError::OfficerRequired => Status::Unauthorized,
         }
     }
 }
@@ -92,11 +108,13 @@ impl From<ApiError> for String {
     fn from(err: ApiError) -> Self {
         match err {
             ApiError::Unknown(msg) => format!("unknown error: {}", msg),
+            ApiError::DatabaseError(msg) => format!("database error: {}", msg),
             ApiError::UserNotFound => "user not found".to_owned(),
             ApiError::NotLoggedIn => "not logged in".to_owned(),
             ApiError::IncorrectCredentials => "incorrect credentials".to_owned(),
             ApiError::InvalidInput(msg) => format!("invalid input: {}", msg),
             ApiError::EmailTaken => "email taken".to_owned(),
+            ApiError::OfficerRequired => "officer permissions required".to_owned(),
         }
     }
 }
@@ -117,35 +135,39 @@ where
                         return Err(Status::InternalServerError);
                     }
                     Ok(json) => {
-                        //Assume object. Remove last curly brace
-                        if json.ends_with('}') {
+                        if json == "null" {
+                            (String::from(r#"{"status":"success"}"#), Status::Ok)
+                        } else if json.ends_with('}') {
+                            //We have a json object that we can append to
+                            let mut tmp = json.as_bytes().to_vec();
+                            let end_curly_brace = tmp.remove(tmp.len() - 1);
+                            if end_curly_brace != b'}' {
+                                //This is provably impossible because we checked that the last char is }
+                                //earlier but we'll keep it in for ultimate safety
+                                error!(
+                                "Json object ended with a }} character before but now the last character is {}! Json: {}",
+                                end_curly_brace,
+                                json
+                            );
+                                return Err(Status::InternalServerError);
+                            }
+
+                            //Add the success status message, making sure to replace the closing } we removed earlier
+                            if tmp.len() == 1 {
+                                //The json was a an empty object before ({}) so don't add a trailing comma
+                                tmp.append(&mut "\"status\":\"success\"}".as_bytes().to_vec());
+                            } else {
+                                tmp.append(&mut ",\"status\":\"success\"}".as_bytes().to_vec());
+                            }
+                            (String::from_utf8(tmp).unwrap(), Status::Ok)
+                        } else {
+                            //Assume object. Remove last curly brace
                             error!(
                                 "Json object doesn't end with a }} character! Json: {}",
                                 json
                             );
                             return Err(Status::InternalServerError);
                         }
-                        let mut tmp = json.as_bytes().to_vec();
-                        let end_curly_brace = tmp.remove(tmp.len() - 1);
-                        if end_curly_brace != b'}' {
-                            //This is provably impossible because we checked that the last char is }
-                            //earlier but we'll keep it in for ultimate safety
-                            error!(
-                                "Json object ended with a }} character before but now the last character is {}! Json: {}",
-                                end_curly_brace,
-                                json
-                            );
-                            return Err(Status::InternalServerError);
-                        }
-
-                        //Add the success status message, making sure to replace the closing } we removed earlier
-                        if tmp.len() == 1 {
-                            //The json was a an empty object before ({}) so don't add a trailing comma
-                            tmp.append(&mut "\"status\":\"success\"}".as_bytes().to_vec());
-                        } else {
-                            tmp.append(&mut ",\"status\":\"success\"}".as_bytes().to_vec());
-                        }
-                        (String::from_utf8(tmp).unwrap(), Status::Ok)
                     }
                 }
             }
@@ -163,6 +185,12 @@ where
             .status(status)
             .header(ContentType::JSON)
             .ok()
+    }
+}
+
+impl<T: Serialize + std::fmt::Debug> From<Result<T, ApiError>> for ApiResponse<T> {
+    fn from(r: Result<T, ApiError>) -> Self {
+        ApiResponse(r)
     }
 }
 
